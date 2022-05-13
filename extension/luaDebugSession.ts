@@ -265,7 +265,7 @@ export class LuaDebugSession extends LoggingDebugSession {
                 } else if (value.type === "nil") {
                     valueStr = "nil";
                 } else if (value.type === "table") {
-                    valueStr = "<table>"; // FIXME
+                    valueStr = "<table>";
                     indexedVariables = 0;
                     while (true) {
                         if ((value.val as any)[indexedVariables+1]) {
@@ -276,7 +276,7 @@ export class LuaDebugSession extends LoggingDebugSession {
                     }
                     indexedVariables = indexedVariables > 0 ? indexedVariables + 1 : indexedVariables;
                 } else if (value.type === "function") {
-                    valueStr = "<function>"; // FIXME
+                    valueStr = "<function>";
                 } else {
                     valueStr = `[${value.type}]`;
                 }
@@ -315,7 +315,7 @@ export class LuaDebugSession extends LoggingDebugSession {
                     } else if (typeof value === "undefined") {
                         valueStr = "nil";
                     } else if (typeof value === "object") {
-                        valueStr = "<table>"; // FIXME
+                        valueStr = "<table>";
                         indexedVariables = 0;
                         while (true) {
                             if (value[indexedVariables+1]) {
@@ -352,7 +352,7 @@ export class LuaDebugSession extends LoggingDebugSession {
                     } else if (typeof value === "undefined") {
                         valueStr = "nil";
                     } else if (typeof value === "object") {
-                        valueStr = "<table>"; // FIXME
+                        valueStr = "<table>";
                         indexedVariables = 0;
                         while (true) {
                             if (value[indexedVariables+1]) {
@@ -384,7 +384,7 @@ export class LuaDebugSession extends LoggingDebugSession {
                     } else if (typeof value === "undefined") {
                         valueStr = "nil";
                     } else if (typeof value === "object") {
-                        valueStr = "<table>"; // FIXME
+                        valueStr = "<table>";
                         indexedVariables = 0;
                         while (true) {
                             if (value[indexedVariables+1]) {
@@ -415,6 +415,28 @@ export class LuaDebugSession extends LoggingDebugSession {
 
     protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
         this.showOutput("continueRequest", OutputCategory.Request);
+        this.variableHandles.reset();
+        this.sendResponse(response);
+        this.sendEvent(new TerminatedEvent());
+    }
+
+
+    protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
+        this.showOutput("nextRequest", OutputCategory.Request);
+        this.variableHandles.reset();
+        this.sendResponse(response);
+        this.sendEvent(new TerminatedEvent());
+    }
+
+    protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
+        this.showOutput("stepInRequest", OutputCategory.Request);
+        this.variableHandles.reset();
+        this.sendResponse(response);
+        this.sendEvent(new TerminatedEvent());
+    }
+
+    protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
+        this.showOutput("stepOutRequest", OutputCategory.Request);
         this.variableHandles.reset();
         this.sendResponse(response);
         this.sendEvent(new TerminatedEvent());
