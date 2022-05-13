@@ -1,27 +1,5 @@
 import {readFileSync} from "fs";
-
-interface Var {
-    val: unknown;
-    type: string;
-}
-
-export interface LocalVars {
-    [name: string]: Var;
-}
-
-interface FrameInfo {
-    name?: string;
-    source?: string;
-    currentline?: number;
-    func?: string;
-    locals: LocalVars;
-}
-
-export interface CrashInfo {
-    errMsg: string;
-    frames: FrameInfo[];
-    logLines: string[];
-}
+import {CrashFileParser, CrashInfo, LocalVars} from "./crashInfo";
 
 interface LineInfo {
     content: string;
@@ -41,13 +19,7 @@ const IGNORED_HEADING_SECTIONS = [
     "Addons"
 ];
 
-export class CrashFile {
-    private readonly path: string;
-
-    public constructor(path: string) {
-        this.path = path;
-    }
-
+export class TSMCrashFileParser extends CrashFileParser {
     private inTable(search: string, tbl: string[]): boolean {
         for (const entry of tbl) {
             if (entry === search) {
@@ -106,7 +78,7 @@ export class CrashFile {
 
     public parse(): CrashInfo {
         // Parse the file into a `LineInfo` tree
-        const lines = readFileSync(this.path)
+        const lines = readFileSync(this.filePath)
             .toString()
             .replace(/\r\n/g, "\n")
             .split("\n")
@@ -164,7 +136,7 @@ export class CrashFile {
             }
             const [headingType, headingContent] = headingMatch.slice(1);
             if (headingType === "Message") {
-                crashInfo.errMsg = headingContent.replace(/^TSM[\/\\]/g, "");
+                crashInfo.errMsg = headingContent.replace(/^TSM[/\\]/g, "");
             } else if (headingType === "Stack Trace") {
                 for (const frameNode of headingNode.children) {
                     const frameMatch = /^(.+) <(.+)>$/.exec(frameNode.content);

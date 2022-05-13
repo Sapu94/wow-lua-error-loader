@@ -1,25 +1,3 @@
-//MIT License
-//
-//Copyright (c) 2020 Tom Blind
-//
-//Permission is hereby granted, free of charge, to any person obtaining a copy
-//of this software and associated documentation files (the "Software"), to deal
-//in the Software without restriction, including without limitation the rights
-//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//copies of the Software, and to permit persons to whom the Software is
-//furnished to do so, subject to the following conditions:
-//
-//The above copyright notice and this permission notice shall be included in all
-//copies or substantial portions of the Software.
-//
-//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-//SOFTWARE.
-
 import {DebugProtocol} from "vscode-debugprotocol";
 import {
     InitializedEvent,
@@ -36,7 +14,8 @@ import {
 import * as path from "path";
 import * as fs from "fs";
 import {LaunchConfig} from "./launchConfig";
-import {CrashFile, CrashInfo} from "./crashfile";
+import {CrashFileParser, CrashInfo} from "./parsers/crashInfo";
+import {TSMCrashFileParser} from "./parsers/tsmCrashFile";
 
 const enum ScopeType {
     Local = 1,
@@ -104,30 +83,30 @@ export class LuaDebugSession extends LoggingDebugSession {
     }
 
     protected initializeRequest(
-        response: DebugProtocol.InitializeResponse,
+        resp: DebugProtocol.InitializeResponse,
         args: DebugProtocol.InitializeRequestArguments
     ): void {
         this.showOutput("initializeRequest", OutputCategory.Request);
 
-        if (typeof response.body === "undefined") {
-            response.body = {};
+        if (typeof resp.body === "undefined") {
+            resp.body = {};
         }
 
-        response.body.supportsConfigurationDoneRequest = true;
-        response.body.supportsTerminateRequest = true;
+        resp.body.supportsConfigurationDoneRequest = true;
+        resp.body.supportsTerminateRequest = true;
 
-        this.sendResponse(response);
+        this.sendResponse(resp);
 
         this.sendEvent(new InitializedEvent());
     }
 
     protected configurationDoneRequest(
-        response: DebugProtocol.ConfigurationDoneResponse,
+        resp: DebugProtocol.ConfigurationDoneResponse,
         args: DebugProtocol.ConfigurationDoneArguments
     ): void {
         this.showOutput("configurationDoneRequest", OutputCategory.Request);
 
-        super.configurationDoneRequest(response, args);
+        super.configurationDoneRequest(resp, args);
 
         if (typeof this.onConfigurationDone !== "undefined") {
             this.onConfigurationDone();
@@ -135,40 +114,47 @@ export class LuaDebugSession extends LoggingDebugSession {
     }
 
     protected async launchRequest(
-        response: DebugProtocol.LaunchResponse,
+        resp: DebugProtocol.LaunchResponse,
         args: DebugProtocol.LaunchRequestArguments & LaunchConfig
     ): Promise<void> {
         this.config = args;
-
         this.showOutput("launchRequest", OutputCategory.Request);
-
         await this.waitForConfiguration();
 
-        //Setup process
+        // Load the crash file
         if (!path.isAbsolute(this.config.cwd)) {
             this.config.cwd = path.resolve(this.config.workspacePath, this.config.cwd);
         }
-        const cwd = this.config.cwd;
-        this.crashInfo = (new CrashFile(cwd + "/" + this.config.crashFile)).parse();
+        const crashFilePath = this.config.cwd + path.sep + this.config.crashFile;
+        this.showOutput(`loading "${crashFilePath}"`, OutputCategory.Info);
 
-        this.showOutput(`launching from "${cwd}"`, OutputCategory.Info);
+        // Parse the crash file
+        // TODO: add support for other parsers here in the future
+        let fileParser: CrashFileParser;
+        // eslint-disable-next-line
+        if (true) {
+            fileParser = new TSMCrashFileParser(crashFilePath);
+        }
+        this.crashInfo = fileParser.parse();
 
+        // Stop execution with the error from the crash file
         this.showOutput(this.crashInfo.errMsg, OutputCategory.Error);
         const evt: DebugProtocol.StoppedEvent = new StoppedEvent("exception", 1, this.crashInfo.errMsg);
         evt.body.allThreadsStopped = true;
         this.sendEvent(evt);
 
+        // Print out any log lines
         for (const line of this.crashInfo.logLines) {
             this.showOutput(line, OutputCategory.Log);
         }
 
-        this.sendResponse(response);
+        this.sendResponse(resp);
     }
 
-    protected async threadsRequest(response: DebugProtocol.ThreadsResponse): Promise<void> {
+    protected threadsRequest(resp: DebugProtocol.ThreadsResponse): void {
         this.showOutput("threadsRequest", OutputCategory.Request);
         // Just the main thread
-        response.body = {
+        resp.body = {
             threads: [
                 {
                     id: 1,
@@ -176,18 +162,18 @@ export class LuaDebugSession extends LoggingDebugSession {
                 }
             ],
         };
-        this.sendResponse(response);
+        this.sendResponse(resp);
     }
 
-    protected async stackTraceRequest(
-        response: DebugProtocol.StackTraceResponse,
-        args: DebugProtocol.StackTraceArguments
-    ): Promise<void> {
-        this.showOutput(`stackTraceRequest ${args.startFrame}/${args.levels} (thread ${args.threadId})`, OutputCategory.Request);
+    protected stackTraceRequest(resp: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
+        this.showOutput(
+            `stackTraceRequest ${args.startFrame}/${args.levels} (thread ${args.threadId})`,
+            OutputCategory.Request
+        );
 
         if (!this.crashInfo) {
-            response.success = false;
-            this.sendResponse(response);
+            resp.success = false;
+            this.sendResponse(resp);
             return;
         }
 
@@ -198,13 +184,15 @@ export class LuaDebugSession extends LoggingDebugSession {
         for (let i = startFrame; i < endFrame; ++i) {
             const info = this.crashInfo.frames[i];
             const currentLine = info.currentline;
-            const separator = "/"; // FIXME
 
             let source: Source | undefined;
-            let column = 1; //Needed for exception display: https://github.com/microsoft/vscode/issues/46080
+            const column = 1; //Needed for exception display: https://github.com/microsoft/vscode/issues/46080
 
             //Un-mapped source
-            const sourceStr = info.source && info.source.replace(/[/\\]+/g, separator) || "?";
+            let sourceStr = "";
+            if (typeof info.source !== "undefined") {
+                sourceStr = info.source.replace(/[/\\]+/g, path.sep);
+            }
             const sourcePath = this.resolvePath(sourceStr);
             if (typeof source === "undefined" && typeof sourcePath !== "undefined") {
                 source = new Source(path.basename(sourceStr), sourcePath);
@@ -218,40 +206,37 @@ export class LuaDebugSession extends LoggingDebugSession {
             }
 
             const frameId = i;
-            let line = (currentLine && currentLine > 0) ? currentLine : -1;
+            let line = -1;
+            if (typeof currentLine !== "undefined" && currentLine > 0) {
+                line = currentLine;
+            }
             const stackFrame: DebugProtocol.StackFrame = new StackFrame(frameId, frameFunc, source, line, column);
             stackFrame.presentationHint = typeof sourcePath === "undefined" ? "subtle" : "normal";
             frames.push(stackFrame);
         }
-        response.body = {stackFrames: frames, totalFrames: this.crashInfo.frames.length};
-        this.sendResponse(response);
+        resp.body = {stackFrames: frames, totalFrames: this.crashInfo.frames.length};
+        this.sendResponse(resp);
     }
 
-    protected async scopesRequest(
-        response: DebugProtocol.ScopesResponse,
-        args: DebugProtocol.ScopesArguments
-    ): Promise<void> {
+    protected scopesRequest(resp: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
         this.showOutput("scopesRequest", OutputCategory.Request);
         this.frame = args.frameId;
         const scopes: Scope[] = [
             new Scope("Locals", ScopeType.Local, false)
         ];
-        response.body = {scopes};
-        this.sendResponse(response);
+        resp.body = {scopes};
+        this.sendResponse(resp);
     }
 
-    protected async variablesRequest(
-        response: DebugProtocol.VariablesResponse,
-        args: DebugProtocol.VariablesArguments
-    ): Promise<void> {
+    protected variablesRequest(resp: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
         if (!this.crashInfo) {
-            response.success = false;
-            this.sendResponse(response);
+            resp.success = false;
+            this.sendResponse(resp);
             return;
         }
 
         const variables: Variable[] = [];
-        if (args.variablesReference == ScopeType.Local) {
+        if (args.variablesReference === ScopeType.Local) {
             this.showOutput("variablesRequest locals", OutputCategory.Request);
             const locals = this.crashInfo.frames[this.frame].locals;
             for (const luaName in locals) {
@@ -268,7 +253,7 @@ export class LuaDebugSession extends LoggingDebugSession {
                     valueStr = "<table>";
                     indexedVariables = 0;
                     while (true) {
-                        if ((value.val as any)[indexedVariables+1]) {
+                        if (`${indexedVariables + 1}` in (value.val as Record<string, unknown>)) {
                             indexedVariables++;
                         } else {
                             break;
@@ -285,55 +270,32 @@ export class LuaDebugSession extends LoggingDebugSession {
                     const ref = this.variableHandles.create(`${this.frame}:${luaName}`);
                     variables.push(new Variable(luaName, valueStr, ref, indexedVariables, 1));
                 } else {
-                    variables.push(new Variable(luaName, valueStr, undefined, 0));
+                    let newRef: undefined;
+                    variables.push(new Variable(luaName, valueStr, newRef, 0));
                 }
             }
         } else {
             const ref = this.variableHandles.get(args.variablesReference);
-            this.showOutput(`variablesRequest ${ref} ${args.filter} ${args.start}/${args.count}`, OutputCategory.Request);
+            this.showOutput(
+                `variablesRequest ${ref} ${args.filter} ${args.start}/${args.count}`,
+                OutputCategory.Request
+            );
             const parts = ref.split(":");
             if (parts.length < 2) {
                 throw Error("Invalid ref");
             }
             const locals = this.crashInfo.frames[parseInt(parts[0])].locals;
-            let tblVar = locals[parts[1]].val as any;
+            let tblVar = locals[parts[1]].val as Record<string, unknown>;
             for (let i = 2; i < parts.length; i++) {
-                tblVar = tblVar[parts[i]];
+                tblVar = tblVar[parts[i]] as Record<string, unknown>;
             }
             if (args.filter === "named") {
                 for (const key in tblVar) {
                     if (Number.isInteger(Number(key))) {
-                        continue; // FIXME: support non-indexed, numeric keys
+                        // TODO: support non-index, numeric keys
+                        continue;
                     }
-                    const value = tblVar[key];
-                    let valueStr: string;
-                    let indexedVariables: number | undefined;
-                    if (typeof value === "string") {
-                        valueStr = `"${value}"`;
-                    } else if (typeof value === "number" || typeof value === "boolean") {
-                        valueStr = `${value}`;
-                    } else if (typeof value === "undefined") {
-                        valueStr = "nil";
-                    } else if (typeof value === "object") {
-                        valueStr = "<table>";
-                        indexedVariables = 0;
-                        while (true) {
-                            if (value[indexedVariables+1]) {
-                                indexedVariables++;
-                            } else {
-                                break;
-                            }
-                        }
-                        indexedVariables = indexedVariables > 0 ? indexedVariables + 1 : indexedVariables;
-                    } else {
-                        valueStr = `[${value.type}]`;
-                    }
-                    if (typeof value === "object") {
-                        const newRef = this.variableHandles.create(`${ref}:${key}`);
-                        variables.push(new Variable(key, valueStr, newRef, indexedVariables, 1));
-                    } else {
-                        variables.push(new Variable(key, valueStr, undefined, 0));
-                    }
+                    variables.push(this.handleVariable(tblVar[key], key, ref));
                 }
             } else if (args.filter === "indexed") {
                 if (typeof args.start === "undefined" || typeof args.count === "undefined") {
@@ -342,113 +304,89 @@ export class LuaDebugSession extends LoggingDebugSession {
                 const first = Math.max(args.start, 1);
                 const last = args.start + args.count - 1;
                 for (let i = first; i <= last; i++) {
-                    const value = tblVar[i];
-                    let valueStr: string;
-                    let indexedVariables: number | undefined;
-                    if (typeof value === "string") {
-                        valueStr = `"${value}"`;
-                    } else if (typeof value === "number" || typeof value === "boolean") {
-                        valueStr = `${value}`;
-                    } else if (typeof value === "undefined") {
-                        valueStr = "nil";
-                    } else if (typeof value === "object") {
-                        valueStr = "<table>";
-                        indexedVariables = 0;
-                        while (true) {
-                            if (value[indexedVariables+1]) {
-                                indexedVariables++;
-                            } else {
-                                break;
-                            }
-                        }
-                        indexedVariables = indexedVariables > 0 ? indexedVariables + 1 : indexedVariables;
-                    } else {
-                        valueStr = `[${value.type}]`;
-                    }
-                    if (typeof value === "object") {
-                        const newRef = this.variableHandles.create(`${ref}:${i}`);
-                        variables.push(new Variable(`${i}`, valueStr, newRef, indexedVariables, 1));
-                    } else {
-                        variables.push(new Variable(`${i}`, valueStr, undefined, 0));
-                    }
+                    variables.push(this.handleVariable(tblVar[i], `${i}`, ref));
                 }
             } else if (typeof args.filter === "undefined") {
                 for (const key in tblVar) {
-                    const value = tblVar[key];
-                    let valueStr: string;
-                    let indexedVariables: number | undefined;
-                    if (typeof value === "string") {
-                        valueStr = `"${value}"`;
-                    } else if (typeof value === "number" || typeof value === "boolean") {
-                        valueStr = `${value}`;
-                    } else if (typeof value === "undefined") {
-                        valueStr = "nil";
-                    } else if (typeof value === "object") {
-                        valueStr = "<table>";
-                        indexedVariables = 0;
-                        while (true) {
-                            if (value[indexedVariables+1]) {
-                                indexedVariables++;
-                            } else {
-                                break;
-                            }
-                        }
-                        indexedVariables = indexedVariables > 0 ? indexedVariables + 1 : indexedVariables;
-                    } else {
-                        valueStr = `[${value.type}]`;
-                    }
-                    if (typeof value === "object") {
-                        const newRef = this.variableHandles.create(`${ref}:${key}`);
-                        variables.push(new Variable(`${key}`, valueStr, newRef, indexedVariables, 1));
-                    } else {
-                        variables.push(new Variable(`${key}`, valueStr, undefined, 0));
-                    }
+                    variables.push(this.handleVariable(tblVar[key], key, ref));
                 }
             } else {
                 throw new Error(`Unexpected filter: ${args.filter}`);
             }
         }
         variables.sort(sortVariables);
-        response.body = {variables};
-        this.sendResponse(response);
+        resp.body = {variables};
+        this.sendResponse(resp);
     }
 
-    protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
+    protected continueRequest(resp: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
         this.showOutput("continueRequest", OutputCategory.Request);
         this.variableHandles.reset();
-        this.sendResponse(response);
+        this.sendResponse(resp);
         this.sendEvent(new TerminatedEvent());
     }
 
 
-    protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
+    protected nextRequest(resp: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
         this.showOutput("nextRequest", OutputCategory.Request);
         this.variableHandles.reset();
-        this.sendResponse(response);
+        this.sendResponse(resp);
         this.sendEvent(new TerminatedEvent());
     }
 
-    protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
+    protected stepInRequest(resp: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
         this.showOutput("stepInRequest", OutputCategory.Request);
         this.variableHandles.reset();
-        this.sendResponse(response);
+        this.sendResponse(resp);
         this.sendEvent(new TerminatedEvent());
     }
 
-    protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
+    protected stepOutRequest(resp: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
         this.showOutput("stepOutRequest", OutputCategory.Request);
         this.variableHandles.reset();
-        this.sendResponse(response);
+        this.sendResponse(resp);
         this.sendEvent(new TerminatedEvent());
     }
 
     protected terminateRequest(
-        response: DebugProtocol.TerminateResponse,
+        resp: DebugProtocol.TerminateResponse,
         args: DebugProtocol.TerminateArguments
     ): void {
         this.showOutput("terminateRequest", OutputCategory.Request);
-        this.sendResponse(response);
+        this.sendResponse(resp);
         this.sendEvent(new TerminatedEvent());
+    }
+
+    private handleVariable(value: unknown, key: string, ref: string): Variable {
+        let valueStr: string;
+        let indexedVariables: number | undefined;
+        if (typeof value === "string") {
+            valueStr = `"${value}"`;
+        } else if (typeof value === "number" || typeof value === "boolean") {
+            valueStr = `${value}`;
+        } else if (typeof value === "undefined") {
+            valueStr = "nil";
+        } else if (typeof value === "object") {
+            valueStr = "<table>";
+            indexedVariables = 0;
+            while (true) {
+                if (`${indexedVariables + 1}` in (value as Record<string, unknown>)) {
+                    indexedVariables++;
+                } else {
+                    break;
+                }
+            }
+            indexedVariables = indexedVariables > 0 ? indexedVariables + 1 : indexedVariables;
+        } else {
+            valueStr = `[${typeof value}]`;
+        }
+        if (typeof value === "object") {
+            const newRef = this.variableHandles.create(`${ref}:${key}`);
+            return new Variable(key, valueStr, newRef, indexedVariables, 1);
+        } else {
+            let newRef: undefined;
+            return new Variable(key, valueStr, newRef, 0);
+        }
     }
 
     private assert<T>(value: T | null | undefined, message = "assertion failed"): T {
