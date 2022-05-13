@@ -1,0 +1,7 @@
+**/*.ts
+**/*.js.map
+**/*.lua.map
+**/tsconfig.json
+**/tslint.json
+.vscode
+.gitignore

@@ -1,0 +1,86 @@
+{
+    "name": "wow-lua-error-loader",
+    "publisher": "Sapu94",
+    "version": "0.1.0",
+    "description": "Load Lua errors from WoW into VSCode for easy debugging",
+    "displayName": "WoW Lua Error Loader",
+    "icon": "resources/Logo.png",
+    "repository": {
+        "type": "github",
+        "url": "https://github.com/Sapu94/wow-lua-error-loader.git"
+    },
+    "author": "sapu94@gmail.com",
+    "license": "MIT",
+    "categories": [
+        "Debuggers"
+    ],
+    "keywords": [
+        "lua",
+        "wow"
+    ],
+    "scripts": {
+        "lint-extension": "cd extension && eslint . && cd ..",
+        "lint": "npm run lint-extension",
+        "build-extension": "tsc -p extension",
+        "build": "npm run build-extension",
+        "bundle": "npm run clean && npm run lint && npm run build && vsce package",
+        "publish": "npm run bundle && vsce publish",
+        "clean": "rm -f extension/*.js && rm -f extension/*.js.map && rm -f *.vsix"
+    },
+    "dependencies": {
+        "vscode-debugadapter": "^1.48.0"
+    },
+    "devDependencies": {
+        "@types/node": "^16.4.13",
+        "@types/vscode": "^1.44.0",
+        "@typescript-eslint/eslint-plugin": "^4.29.1",
+        "@typescript-eslint/parser": "^4.29.1",
+        "eslint": "^7.32.0",
+        "typescript": "^4.3.5",
+        "vsce": "^1.96.1"
+    },
+    "main": "./extension/extension.js",
+    "engines": {
+        "vscode": "^1.44.0"
+    },
+    "activationEvents": [
+        "onDebug"
+    ],
+    "contributes": {
+        "configuration": [],
+        "debuggers": [
+            {
+                "type": "wow-lua-error-loader",
+                "label": "WoW Lua Error Loader",
+                "program": "./extension/debugAdapter.js",
+                "runtime": "node",
+                "languages": [
+                    "lua"
+                ],
+                "initialConfigurations": [
+                    {
+                        "name": "Load WoW Lua Errors",
+                        "type": "wow-lua-error-loader",
+                        "args": []
+                    }
+                ],
+                "configurationAttributes": {
+                    "launch": {
+                        "properties": {
+                            "verbose": {
+                                "type": "boolean",
+                                "description": "Enable verbose output",
+                                "default": false
+                            },
+                            "crashFile": {
+                                "type": "string",
+                                "description": "The file to load the crash from",
+                                "default": "crash.txt"
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    }
+}
