@@ -1,7 +1,7 @@
 {
     "name": "wow-lua-error-loader",
     "publisher": "Sapu94",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Load Lua errors from WoW into VSCode for easy debugging",
     "displayName": "WoW Lua Error Loader",
     "icon": "resources/Logo.png",
@@ -23,8 +23,8 @@
         "lint": "npm run lint-extension",
         "build-extension": "tsc -p extension",
         "build": "npm run build-extension",
-        "bundle": "npm run clean && npm run lint && npm run build && vsce package",
-        "publish": "npm run bundle && vsce publish",
+        "vsbundle": "npm run clean && npm run lint && npm run build && vsce package",
+        "vspublish": "npm run vsbundle && vsce publish",
         "clean": "rm -f extension/*.js && rm -f extension/*.js.map && rm -f *.vsix"
     },
     "dependencies": {
@@ -81,7 +81,10 @@
                             "errorType": {
                                 "type": "string",
                                 "description": "The error handler type which generated the error",
-                                "enum": ["blizzard", "tsm"],
+                                "enum": [
+                                    "blizzard",
+                                    "tsm"
+                                ],
                                 "default": "blizzard"
                             }
                         }
