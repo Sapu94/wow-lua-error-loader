@@ -23,9 +23,7 @@ To load a crash, simply add the entire error message into a `crash.txt` file in 
     {
       "type": "lua-local",
       "request": "launch",
-      "name": "Debug",
-      "crashFile": "crash.txt",
-      "verbose": true
+      "name": "Debug"
     }
   ]
 }
