@@ -1,11 +1,4 @@
-import {readFileSync} from "fs";
-import {CrashFileParser, CrashInfo, LocalVars} from "./crashInfo";
-
-interface LineInfo {
-    content: string;
-    children: LineInfo[];
-    parent?: LineInfo;
-}
+import {CrashFileParser, CrashInfo, LineInfo, LocalVars} from "./crashInfo";
 
 const IGNORED_HEADING_SECTIONS = [
     "Time",
@@ -76,13 +69,8 @@ export class TSMCrashFileParser extends CrashFileParser {
         }
     }
 
-    public parse(): CrashInfo {
-        // Parse the file into a `LineInfo` tree
-        const lines = readFileSync(this.filePath)
-            .toString()
-            .replace(/\r\n/g, "\n")
-            .split("\n")
-            .filter(val => val !== "");
+    protected createTree(lines: string[]): LineInfo {
+        // Parse the lines into a `LineInfo` tree
         const rootNode: LineInfo = {content: "", children: []};
         let currentNode: LineInfo = rootNode;
         let currentLevel = 0;
@@ -126,10 +114,13 @@ export class TSMCrashFileParser extends CrashFileParser {
             currentNode = node;
             currentLevel = level;
         }
+        return rootNode;
+    }
 
+    protected getCrashInfo(tree: LineInfo): CrashInfo {
         // Walk through the tree and pull out the relavent info
         const crashInfo: CrashInfo = {errMsg: "", frames: [], logLines: []};
-        for (const headingNode of rootNode.children) {
+        for (const headingNode of tree.children) {
             const headingMatch = /^([A-Za-z ]+): ?(.*)$/.exec(headingNode.content);
             if (!headingMatch) {
                 throw Error(`Invalid crash file heading line: '${headingNode.content}'`);

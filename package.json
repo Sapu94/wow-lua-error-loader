@@ -61,7 +61,8 @@
                     {
                         "name": "Load WoW Lua Errors",
                         "type": "wow-lua-error-loader",
-                        "args": []
+                        "request": "launch",
+                        "errorType": "blizzard"
                     }
                 ],
                 "configurationAttributes": {
@@ -76,6 +77,12 @@
                                 "type": "string",
                                 "description": "The file to load the crash from",
                                 "default": "crash.txt"
+                            },
+                            "errorType": {
+                                "type": "string",
+                                "description": "The error handler type which generated the error",
+                                "enum": ["blizzard", "tsm"],
+                                "default": "blizzard"
                             }
                         }
                     }

@@ -7,7 +7,11 @@ This extension is heavily inspired by [local-lua-debugger-vscode](https://github
 ---
 ## Features
 
-The specific feature set varies based on the error parser being used. The following parsers are implemented:
+The specific feature set varies based on the error handler which reported the error. The following parsers are implemented:
+
+### Blizzard
+
+Loads errors from the default Blizzard error UI with support for stack frames.
 
 ### TradeSkillMaster
 
@@ -23,7 +27,8 @@ To load a crash, simply add the entire error message into a `crash.txt` file in 
     {
       "type": "lua-local",
       "request": "launch",
-      "name": "Debug"
+      "name": "Debug",
+      "errorType": "blizzard",
     }
   ]
 }
@@ -31,6 +36,11 @@ To load a crash, simply add the entire error message into a `crash.txt` file in 
 
 ---
 ## Additional Configuration Options
+
+#### `errorType`
+
+The type of the error handler which generated the crash.
+
 #### `crashfile`
 
 The path to the crashfile to load in the debugger relative to the root of your workspace. This defaults to `crash.txt`.

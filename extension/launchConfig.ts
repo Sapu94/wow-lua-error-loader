@@ -3,5 +3,6 @@ export interface LaunchConfig {
     workspacePath: string;
     cwd: string;
     verbose?: boolean;
-    crashFile: string;
+    crashFile?: string;
+    errorType?: string;
 }

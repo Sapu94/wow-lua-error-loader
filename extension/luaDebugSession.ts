@@ -15,6 +15,7 @@ import * as path from "path";
 import * as fs from "fs";
 import {LaunchConfig} from "./launchConfig";
 import {CrashFileParser, CrashInfo} from "./parsers/crashInfo";
+import {BlizzardCrashFileParser} from "./parsers/blizzardCrashFile";
 import {TSMCrashFileParser} from "./parsers/tsmCrashFile";
 
 const enum ScopeType {
@@ -121,21 +122,45 @@ export class LuaDebugSession extends LoggingDebugSession {
         this.showOutput("launchRequest", OutputCategory.Request);
         await this.waitForConfiguration();
 
+        // Default config
+        this.config.errorType = this.config.errorType ?? "blizzard";
+        this.config.crashFile = this.config.crashFile ?? "crash.txt";
+
         // Load the crash file
         if (!path.isAbsolute(this.config.cwd)) {
             this.config.cwd = path.resolve(this.config.workspacePath, this.config.cwd);
         }
         const crashFilePath = this.config.cwd + path.sep + this.config.crashFile;
         this.showOutput(`loading "${crashFilePath}"`, OutputCategory.Info);
+        if (!fs.existsSync(crashFilePath)) {
+            resp.success = false;
+            resp.message = `Crash file does not exist: ${crashFilePath}`;
+            this.showOutput(resp.message, OutputCategory.Error);
+            this.sendResponse(resp);
+            return;
+        }
 
         // Parse the crash file
-        // TODO: add support for other parsers here in the future
-        let fileParser: CrashFileParser;
-        // eslint-disable-next-line
-        if (true) {
-            fileParser = new TSMCrashFileParser(crashFilePath);
+        try {
+            // TODO: add support for other parsers here in the future
+            let fileParser: CrashFileParser;
+            // eslint-disable-next-line
+            if (this.config.errorType == "blizzard") {
+                fileParser = new BlizzardCrashFileParser(crashFilePath);
+            } else if (this.config.errorType === "tsm") {
+                fileParser = new TSMCrashFileParser(crashFilePath);
+            } else {
+                throw Error(`Invalid errorType: ${this.config.errorType}`);
+            }
+            this.crashInfo = await fileParser.parse();
+        } catch (e: unknown) {
+            const error: Error = e as Error;
+            resp.success = false;
+            resp.message = `Failed to load crash file!\n${error}`;
+            this.showOutput(resp.message, OutputCategory.Error);
+            this.sendResponse(resp);
+            return;
         }
-        this.crashInfo = fileParser.parse();
 
         // Stop execution with the error from the crash file
         this.showOutput(this.crashInfo.errMsg, OutputCategory.Error);
@@ -311,7 +336,7 @@ export class LuaDebugSession extends LoggingDebugSession {
                     variables.push(this.handleVariable(tblVar[key], key, ref));
                 }
             } else {
-                throw new Error(`Unexpected filter: ${args.filter}`);
+                throw Error(`Unexpected filter: ${args.filter}`);
             }
         }
         variables.sort(sortVariables);
@@ -392,7 +417,7 @@ export class LuaDebugSession extends LoggingDebugSession {
     private assert<T>(value: T | null | undefined, message = "assertion failed"): T {
         if (value === null || typeof value === "undefined") {
             this.sendEvent(new OutputEvent(message));
-            throw new Error(message);
+            throw Error(message);
         }
         return value;
     }
