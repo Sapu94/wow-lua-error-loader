@@ -52,6 +52,8 @@ export class TSMCrashFileParser extends CrashFileParser {
         } else if (value === "nil") {
             return {name, value: null, type: "nil"};
         } else if (value.substring(value.length - 2) === "{}" || value.substring(value.length - 1) === "{") {
+            const tblNameMatch = /= <?(.+)>? {/.exec(node.content);
+            const type = tblNameMatch ? `table<${tblNameMatch[1]}>` : "table";
             const tblValue: {[key: string | number]: unknown} = {};
             for (const childNode of node.children) {
                 const info = this.parseLocalVar(childNode);
@@ -59,7 +61,7 @@ export class TSMCrashFileParser extends CrashFileParser {
                     tblValue[this.tonumber(info.name) ?? info.name] = info.value;
                 }
             }
-            return {name, value: tblValue, type: "table"};
+            return {name, value: tblValue, type};
         } else if (value === "<userdata>") {
             return {name, value, type: "userdata"};
         } else if (value === "true" || value === "false") {

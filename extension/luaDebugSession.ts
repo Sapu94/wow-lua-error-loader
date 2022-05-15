@@ -274,8 +274,8 @@ export class LuaDebugSession extends LoggingDebugSession {
                     valueStr = `${value.val}`;
                 } else if (value.type === "nil") {
                     valueStr = "nil";
-                } else if (value.type === "table") {
-                    valueStr = "<table>";
+                } else if (value.type.startsWith("table")) {
+                    valueStr = value.type;
                     indexedVariables = 0;
                     while (true) {
                         if (`${indexedVariables + 1}` in (value.val as Record<string, unknown>)) {
@@ -286,12 +286,12 @@ export class LuaDebugSession extends LoggingDebugSession {
                     }
                     indexedVariables = indexedVariables > 0 ? indexedVariables + 1 : indexedVariables;
                 } else if (value.type === "function") {
-                    valueStr = "<function>";
+                    valueStr = "function";
                 } else {
                     valueStr = `[${value.type}]`;
                 }
 
-                if (value.type === "table") {
+                if (typeof indexedVariables !== "undefined") {
                     const ref = this.variableHandles.create(`${this.frame}:${luaName}`);
                     variables.push(new Variable(luaName, valueStr, ref, indexedVariables, 1));
                 } else {
@@ -392,7 +392,7 @@ export class LuaDebugSession extends LoggingDebugSession {
         } else if (typeof value === "undefined") {
             valueStr = "nil";
         } else if (typeof value === "object") {
-            valueStr = "<table>";
+            valueStr = "table";
             indexedVariables = 0;
             while (true) {
                 if (`${indexedVariables + 1}` in (value as Record<string, unknown>)) {
