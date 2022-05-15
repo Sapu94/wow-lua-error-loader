@@ -1,7 +1,7 @@
 {
     "name": "wow-lua-error-loader",
     "publisher": "Sapu94",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Load Lua errors from WoW into VSCode for easy debugging",
     "displayName": "WoW Lua Error Loader",
     "icon": "resources/Logo.png",
