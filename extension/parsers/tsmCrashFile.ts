@@ -66,10 +66,10 @@ export class TSMCrashFileParser extends CrashFileParser {
             return {name, value, type: "userdata"};
         } else if (value === "true" || value === "false") {
             return {name, value: (value === "true"), type: "boolean"};
-        } else if (value === "Infinite") {
+        } else if (value === "Infinite" || value === "inf" || value === "-inf") {
             return {name, value: Infinity, type: "number"};
         } else {
-            throw Error(`Unknown local: ${node.content}`);
+            return null;
         }
     }
 
